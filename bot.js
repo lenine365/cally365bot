@@ -4,7 +4,7 @@ const express = require('express');
 // ==============================
 // CONFIGURATION - REMPLACE ICI
 // ==============================
-const TELEGRAM_TOKEN = '8709105623:AAGvuHsf7ef3msG7r-9IDZA2gdyuaouLarQ';
+const TELEGRAM_TOKEN = 'TON_TOKEN_TELEGRAM_ICI';
 const PORT = process.env.PORT || 3000;
 
 // ==============================
@@ -358,20 +358,27 @@ bot.onText(/\/status/, (msg) => {
 // API POUR VAPI
 // ==============================
 
-app.get('/prochain-agent', (req, res) => {
+// Vapi appelle cet endpoint en POST avec { message: { toolCallList: [{ id, name }] } }
+app.post('/prochain-agent', (req, res) => {
+  // Récupérer le toolCallId envoyé par Vapi
+  const toolCallList = req.body?.message?.toolCallList || [];
+  const toolCallId = toolCallList[0]?.id || 'unknown';
+
   if (!systemeActif) {
     return res.json({
-      disponible: false,
-      message: 'Système en pause',
-      numero: null
+      results: [{
+        toolCallId: toolCallId,
+        result: 'Aucun agent disponible. Le système est en pause. Informe le prospect qu\'un conseiller le rappellera dès que possible.'
+      }]
     });
   }
 
   if (fileAttente.length === 0) {
     return res.json({
-      disponible: false,
-      message: 'Aucun agent disponible',
-      numero: null
+      results: [{
+        toolCallId: toolCallId,
+        result: 'Aucun agent disponible pour le moment. Informe le prospect qu\'un conseiller le rappellera dès que possible.'
+      }]
     });
   }
 
@@ -381,6 +388,7 @@ app.get('/prochain-agent', (req, res) => {
 
   mettreAgentOff(agentId);
 
+  // Notifier l'agent sur Telegram
   bot.sendMessage(agentId,
     `📲 *Appel entrant !*\n\n` +
     `Un prospect intéressé va t'appeler maintenant.\n\n` +
@@ -389,10 +397,12 @@ app.get('/prochain-agent', (req, res) => {
     { parse_mode: 'Markdown' }
   ).catch(() => {});
 
+  // Retourner le numéro au format Vapi
   return res.json({
-    disponible: true,
-    agent: agent.nom,
-    numero: numero
+    results: [{
+      toolCallId: toolCallId,
+      result: numero
+    }]
   });
 });
 
