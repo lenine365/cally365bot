@@ -460,6 +460,22 @@ app.post('/prochain-agent', async (req, res) => {
 });
 
 
+
+// GET pour tests navigateur et compatibilité Vapi
+app.get("/prochain-agent", async (req, res) => {
+  if (!systemeActif) {
+    return res.json({ results: [{ toolCallId: "test", result: "Système en pause." }] });
+  }
+  if (fileAttente.length === 0) {
+    return res.json({ results: [{ toolCallId: "test", result: "Aucun agent disponible." }] });
+  }
+  const agentId = fileAttente[0];
+  const agent = agentsAutorises[agentId];
+  const numero = agent.numero;
+  mettreAgentOff(agentId);
+  bot.sendMessage(agentId, "📲 *Appel entrant !*\n\nUn prospect va t'appeler.\n\n_Tu es passé HORS LIGNE._\n_Renvoie /on quand tu es prêt._", { parse_mode: "Markdown" }).catch(() => {});
+  return res.json({ results: [{ toolCallId: "test", result: numero }] });
+});
 app.get('/statut', (req, res) => {
   res.json({
     systeme: systemeActif ? 'actif' : 'pause',
