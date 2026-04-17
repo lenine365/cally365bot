@@ -25,6 +25,7 @@ app.use(express.json());
 
 // Agents autorisés { telegramId: { nom, numero, statut, chat_id } }
 let agentsAutorises = {};
+agentsAutorises[ADMIN_ID] = { nom: "Admin", numero: null, statut: "off", chat_id: ADMIN_ID };
 
 // File d'attente FIFO des agents ON
 let fileAttente = [];
