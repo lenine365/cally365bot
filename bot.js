@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
+const axios = require('axios');
 
 // ==============================
 // CONFIGURATION - REMPLACE ICI
@@ -356,56 +357,108 @@ bot.onText(/\/status/, (msg) => {
 });
 
 // ==============================
-// API POUR VAPI
+// API POUR VAPI - DYNAMIC TRANSFER
 // ==============================
 
-// Vapi appelle cet endpoint en POST avec { message: { toolCallList: [{ id, name }] } }
-app.post('/prochain-agent', (req, res) => {
-  // Récupérer le toolCallId envoyé par Vapi
-  const toolCallList = req.body?.message?.toolCallList || [];
-  const toolCallId = toolCallList[0]?.id || 'unknown';
+// Vapi appelle cet endpoint avec controlUrl + toolCallList
+app.post('/prochain-agent', async (req, res) => {
+  try {
+    const message = req.body?.message || {};
 
-  if (!systemeActif) {
+    // Récupérer le toolCallId
+    const toolCallList = message?.toolCallList || [];
+    const toolCallId = toolCallList[0]?.id || 'unknown';
+
+    // Récupérer le controlUrl (pour exécuter le vrai transfert)
+    const controlUrl = message?.call?.monitor?.controlUrl;
+
+    // Log pour debug
+    console.log('=== VAPI TOOL CALL ===');
+    console.log('toolCallId:', toolCallId);
+    console.log('controlUrl:', controlUrl);
+    console.log('fileAttente:', fileAttente);
+    console.log('systemeActif:', systemeActif);
+
+    // Système en pause
+    if (!systemeActif) {
+      return res.json({
+        results: [{
+          toolCallId: toolCallId,
+          result: 'Le système est en pause. Un conseiller vous rappellera dès que possible.'
+        }]
+      });
+    }
+
+    // Aucun agent disponible
+    if (fileAttente.length === 0) {
+      return res.json({
+        results: [{
+          toolCallId: toolCallId,
+          result: 'Aucun conseiller disponible pour le moment. Nous vous rappellerons dès que possible.'
+        }]
+      });
+    }
+
+    // Prendre le premier agent disponible
+    const agentId = fileAttente[0];
+    const agent = agentsAutorises[agentId];
+    const numero = agent.numero;
+
+    // Passer l'agent OFF immédiatement
+    mettreAgentOff(agentId);
+
+    // Notifier l'agent sur Telegram
+    bot.sendMessage(agentId,
+      `📲 *Appel entrant !*\n\n` +
+      `Un prospect intéressé va t'appeler maintenant.\n\n` +
+      `_Tu es passé HORS LIGNE automatiquement._\n` +
+      `_Renvoie /on quand tu es prêt pour le prochain._`,
+      { parse_mode: 'Markdown' }
+    ).catch(() => {});
+
+    // Si on a un controlUrl → méthode Live Call Control (recommandée par Vapi)
+    if (controlUrl) {
+      try {
+        await axios.post(`${controlUrl}/control`, {
+          type: 'transfer',
+          destination: {
+            type: 'number',
+            number: numero
+          },
+          content: 'Je vous transfère vers un conseiller disponible. Un instant s\'il vous plaît.'
+        }, {
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        console.log('✅ Transfert exécuté via controlUrl vers:', numero);
+
+        return res.json({
+          results: [{
+            toolCallId: toolCallId,
+            result: `Transfert en cours vers le conseiller.`
+          }]
+        });
+      } catch (controlError) {
+        console.error('❌ Erreur controlUrl:', controlError.message);
+        // Fallback: retourner le numéro directement
+      }
+    }
+
+    // Fallback si pas de controlUrl: retourner le numéro pour que Vapi transfère
+    console.log('⚠️ Pas de controlUrl, fallback numéro direct:', numero);
     return res.json({
       results: [{
         toolCallId: toolCallId,
-        result: 'Aucun agent disponible. Le système est en pause. Informe le prospect qu\'un conseiller le rappellera dès que possible.'
+        result: numero
       }]
     });
+
+  } catch (error) {
+    console.error('❌ Erreur générale:', error.message);
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
-
-  if (fileAttente.length === 0) {
-    return res.json({
-      results: [{
-        toolCallId: toolCallId,
-        result: 'Aucun agent disponible pour le moment. Informe le prospect qu\'un conseiller le rappellera dès que possible.'
-      }]
-    });
-  }
-
-  const agentId = fileAttente[0];
-  const agent = agentsAutorises[agentId];
-  const numero = agent.numero;
-
-  mettreAgentOff(agentId);
-
-  // Notifier l'agent sur Telegram
-  bot.sendMessage(agentId,
-    `📲 *Appel entrant !*\n\n` +
-    `Un prospect intéressé va t'appeler maintenant.\n\n` +
-    `_Tu es passé HORS LIGNE automatiquement._\n` +
-    `_Renvoie /on quand tu es prêt pour le prochain._`,
-    { parse_mode: 'Markdown' }
-  ).catch(() => {});
-
-  // Retourner le numéro au format Vapi
-  return res.json({
-    results: [{
-      toolCallId: toolCallId,
-      result: numero
-    }]
-  });
 });
+
 
 app.get('/statut', (req, res) => {
   res.json({
