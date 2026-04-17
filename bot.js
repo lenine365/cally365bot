@@ -4,7 +4,7 @@ const express = require('express');
 // ==============================
 // CONFIGURATION - REMPLACE ICI
 // ==============================
-const TELEGRAM_TOKEN = 'TON_TOKEN_TELEGRAM_ICI';
+const TELEGRAM_TOKEN = '8709105623:AAGvuHsf7ef3msG7r-9IDZA2gdyuaouLarQ';
 const PORT = process.env.PORT || 3000;
 
 // ==============================
